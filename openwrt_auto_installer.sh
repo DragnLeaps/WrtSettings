@@ -17,10 +17,7 @@ echo ""
 # Interactive WiFi password input with confirmation
 while true; do
     printf "Enter WiFi password (min 8 chars): "
-    stty -echo
     read WIFI_PASSWORD
-    stty echo
-    echo ""
 
     if [ ${#WIFI_PASSWORD} -lt 8 ]; then
         echo "ERROR: Password must be at least 8 characters. Try again."
@@ -28,10 +25,7 @@ while true; do
     fi
 
     printf "Confirm WiFi password: "
-    stty -echo
     read WIFI_PASSWORD_CONFIRM
-    stty echo
-    echo ""
 
     if [ "$WIFI_PASSWORD" != "$WIFI_PASSWORD_CONFIRM" ]; then
         echo "ERROR: Passwords do not match. Try again."
@@ -170,4 +164,3 @@ echo "  IPv6 RA/DHCPv6/NDP disabled"
 echo ""
 echo "Refresh browser: http://192.168.1.1"
 echo "==================================="
-
