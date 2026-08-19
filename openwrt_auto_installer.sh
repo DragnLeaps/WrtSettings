@@ -1,24 +1,49 @@
 #!/bin/sh
 # OpenWrt Auto Installer
-# Russian Language + Argon Theme + adblock-fast + WiFi (1:1 clone) 
+# Russian Language + Argon Theme + adblock-fast + WiFi Anti-Drop
 # Compatible: OpenWrt 24.10.7 / 24.10.8
+#
+# One-liner install (run over SSH on the router):
+#   wget -O /tmp/wrt.sh https://raw.githubusercontent.com/DragnLeaps/WrtSettings/main/openwrt_auto_installer.sh && sh /tmp/wrt.sh
 
 set -e
 
-# ============================================
-# CONFIG: set your WiFi password here
-# ============================================
-WIFI_PASSWORD="CHANGE_ME"
-# ============================================
-
+echo ""
 echo "==================================="
-echo "OpenWrt Auto Installer"
+echo "   OpenWrt Auto Installer"
 echo "==================================="
+echo ""
 
-if [ "$WIFI_PASSWORD" = "CHANGE_ME" ]; then
-    echo "ERROR: edit WIFI_PASSWORD at the top of this script first!"
-    exit 1
-fi
+# Interactive WiFi password input with confirmation
+while true; do
+    printf "Enter WiFi password (min 8 chars): "
+    stty -echo
+    read WIFI_PASSWORD
+    stty echo
+    echo ""
+
+    if [ ${#WIFI_PASSWORD} -lt 8 ]; then
+        echo "ERROR: Password must be at least 8 characters. Try again."
+        continue
+    fi
+
+    printf "Confirm WiFi password: "
+    stty -echo
+    read WIFI_PASSWORD_CONFIRM
+    stty echo
+    echo ""
+
+    if [ "$WIFI_PASSWORD" != "$WIFI_PASSWORD_CONFIRM" ]; then
+        echo "ERROR: Passwords do not match. Try again."
+        continue
+    fi
+
+    break
+done
+
+echo ""
+echo "Password set. Starting installation..."
+echo ""
 
 # Update package lists
 echo "[1/6] Updating package lists..."
@@ -77,9 +102,9 @@ uci commit adblock-fast
 /etc/init.d/adblock-fast start
 
 # Configure WiFi 1:1 clone
-echo "[6/6] Configuring WiFi (1:1 clone)..."
+echo "[6/6] Configuring WiFi..."
 
-# --- radio0: 2.4GHz ---
+# radio0: 2.4 GHz
 uci set wireless.radio0.band='2g'
 uci set wireless.radio0.channel='auto'
 uci set wireless.radio0.htmode='HE20'
@@ -99,7 +124,7 @@ uci set wireless.default_radio0.ocv='0'
 uci set wireless.default_radio0.skip_inactivity_poll='1'
 uci set wireless.default_radio0.disassoc_low_ack='0'
 
-# --- radio1: 5GHz ---
+# radio1: 5 GHz
 uci set wireless.radio1.band='5g'
 uci set wireless.radio1.channel='36'
 uci set wireless.radio1.htmode='HE80'
@@ -120,7 +145,7 @@ uci set wireless.default_radio1.disassoc_low_ack='0'
 
 uci commit wireless
 
-# Disable IPv6 RA/DHCPv6/NDP (matches source config)
+# Disable IPv6 RA/DHCPv6/NDP
 uci set dhcp.lan.ra='disabled'
 uci set dhcp.lan.dhcpv6='disabled'
 uci set dhcp.lan.ndp='disabled'
@@ -137,12 +162,12 @@ echo ""
 echo "==================================="
 echo "Installation complete!"
 echo ""
-echo "Installed:"
 echo "  Russian language"
 echo "  Argon theme (default)"
 echo "  adblock-fast: Hagezi Pro + AdguardTeam CNAME + YouTube Ads"
-echo "  WiFi 1:1 clone (2.4G + 5G, country=RU, PMF, anti-drop)"
+echo "  WiFi: NetisNX31_2.4Ghz / NetisNX31_5Ghz (country=RU, PMF, anti-drop)"
 echo "  IPv6 RA/DHCPv6/NDP disabled"
 echo ""
-echo "NOTE: WiFi will reconnect - SSID NetisNX31_2.4Ghz / NetisNX31_5Ghz"
+echo "Refresh browser: http://192.168.1.1"
 echo "==================================="
+

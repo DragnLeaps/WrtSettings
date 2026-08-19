@@ -2,81 +2,82 @@
 
 Автоматический установщик для OpenWrt с русским языком, темой Argon, блокировщиком рекламы и оптимизированными настройками WiFi.
 
+## Быстрая установка (одна команда)
+
+Подключитесь к роутеру по SSH и выполните:
+
+```bash
+wget -O /tmp/wrt.sh https://raw.githubusercontent.com/DragnLeaps/WrtSettings/main/openwrt_auto_installer.sh && sh /tmp/wrt.sh
+```
+
+Скрипт спросит пароль WiFi (минимум 8 символов) с подтверждением, затем автоматически всё установит и настроит.
+
+---
+
 ## Что устанавливается
 
 - **Русский язык** для LuCI веб-интерфейса
 - **Тема Argon** (современная тёмная тема)
 - **adblock-fast** с веб-интерфейсом и оптимизированными инструментами
-  - Hagezi Pro (основной список)
-  - AdguardTeam CNAME Trackers (трекеры через CNAME)
-  - Kboghdady YouTube Ads DNS (блокировка рекламы YouTube)
-- **WiFi настройки против обрывов соединения**
-  - country=RU для правильной работы в РФ
-  - PMF (Protected Management Frames) - защита от атак деаутентификации
-  - Отключён `disassoc_low_ack` (не отключать клиентов со слабым сигналом)
-  - Отключён `skip_inactivity_poll` (не проверять неактивность агрессивно)
-  - Шифрование SAE-mixed (WPA3 + WPA2) для основных сетей
-- **Отключён IPv6 RA/DHCPv6/NDP** (устраняет проблему с реассоциацией iPhone)
+  - Hagezi Pro
+  - AdguardTeam CNAME Trackers
+  - Kboghdady YouTube Ads DNS
+- **WiFi настройки против обрывов**
+  - SSID: `NetisNX31_2.4Ghz` / `NetisNX31_5Ghz`
+  - country=RU
+  - PMF (Protected Management Frames) mandatory
+  - SAE-mixed (WPA3 + WPA2)
+  - `disassoc_low_ack=0`, `skip_inactivity_poll=1`
+- **Отключён IPv6 RA/DHCPv6/NDP** (устраняет проблему реассоциации iPhone)
+
+---
 
 ## Системные требования
 
 - OpenWrt 24.10.7 или 24.10.8
 - Доступ к интернету через WAN
 - Минимум 50MB свободного места на `/overlay`
-- SSH доступ к роутеру
+- SSH доступ
+
+---
 
 ## Установка
 
-### Способ 1: Загрузка на роутер
-
-```bash
-# Скопируйте скрипт на роутер
-scp openwrt_auto_installer.sh root@192.168.1.1:/tmp/
-
-# Подключитесь по SSH
-ssh root@192.168.1.1
-
-# Запустите установку
-sh /tmp/openwrt_auto_installer.sh
-```
-
-### Способ 2: Через wget
+### Способ 1: One-liner (рекомендуется)
 
 ```bash
 ssh root@192.168.1.1
-cd /tmp
-wget https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-auto-installer/main/openwrt_auto_installer.sh
-sh openwrt_auto_installer.sh
+wget -O /tmp/wrt.sh https://raw.githubusercontent.com/DragnLeaps/WrtSettings/main/openwrt_auto_installer.sh && sh /tmp/wrt.sh
 ```
 
-## Настройка пароля WiFi
+Введите пароль WiFi при запросе (дважды для подтверждения).
 
-**ВАЖНО:** Перед запуском отредактируйте скрипт и измените пароль WiFi!
+### Способ 2: Ручная загрузка
 
 ```bash
-# Откройте скрипт в редакторе
-vi /tmp/openwrt_auto_installer.sh
+# Скопируйте файл на роутер
+scp openwrt_auto_installer.sh root@192.168.1.1:/tmp/wrt.sh
 
-# Найдите строку:
-WIFI_PASSWORD="CHANGE_ME"
-
-# Замените на свой пароль:
-WIFI_PASSWORD="ваш_надёжный_пароль"
+# Подключитесь и запустите
+ssh root@192.168.1.1
+sh /tmp/wrt.sh
 ```
 
-Без изменения пароля скрипт завершится с ошибкой.
+---
 
 ## После установки
 
 1. Обновите страницу веб-интерфейса (`http://192.168.1.1`)
 2. Интерфейс будет на русском с темой Argon
-3. WiFi сети появятся с SSID `NetisNX31_2.4Ghz` и `NetisNX31_5Ghz`
-4. Реклама начнёт блокироваться автоматически (398,925 доменов)
+3. WiFi сети: `NetisNX31_2.4Ghz` (2.4 GHz) и `NetisNX31_5Ghz` (5 GHz)
+4. Реклама блокируется автоматически (~399,000 доменов)
 
-Для перезагрузки интерфейса вручную:
+Для перезагрузки веб-интерфейса:
 ```bash
 /etc/init.d/uhttpd restart
 ```
+
+---
 
 ## Проверка работы
 
@@ -84,36 +85,49 @@ WIFI_PASSWORD="ваш_надёжный_пароль"
 ```bash
 /etc/init.d/adblock-fast status
 ```
-Должно показать: `is blocking 398925 domains`
+Ожидаемый вывод: `is blocking 398925 domains`
 
-### Тест блокировки
+### Тест блокировки рекламы
 ```bash
 nslookup googlesyndication.com 127.0.0.1
 ```
-Должно вернуть `NXDOMAIN` (домен заблокирован)
+Ожидаемый вывод: `NXDOMAIN` (домен заблокирован)
 
 ### WiFi настройки
 ```bash
 uci show wireless | grep -E "country|ieee80211w|disassoc_low_ack|skip_inactivity"
 ```
 
-## Настройка SSID и паролей
+---
 
-Если хотите изменить SSID или использовать разные пароли для сетей, отредактируйте секцию WiFi в скрипте:
+## Настройка
 
+### Изменить SSID
+Отредактируйте скрипт перед запуском:
 ```bash
 uci set wireless.default_radio0.ssid='Ваше_Имя_2.4G'
 uci set wireless.default_radio1.ssid='Ваше_Имя_5G'
 ```
 
+### Изменить канал 5 GHz
+По умолчанию канал 36. Для изменения:
+```bash
+uci set wireless.radio1.channel='44'  # или 48, 149, 153, 157
+uci commit wireless
+wifi reload
+```
+
+---
+
 ## Совместимость
 
-Протестировано на:
-- OpenWrt 24.10.7
-- OpenWrt 24.10.8
-- Роутеры: Netis NX31 (MediaTek MT7981B)
+**Протестировано:**
+- OpenWrt 24.10.7 / 24.10.8
+- Netis NX31 (MediaTek MT7981B)
 
-Должно работать на большинстве роутеров с OpenWrt 24.10.x.
+**Должно работать:** большинство роутеров с OpenWrt 24.10.x
+
+---
 
 ## Устранение проблем
 
@@ -121,25 +135,45 @@ uci set wireless.default_radio1.ssid='Ваше_Имя_5G'
 ```bash
 df -h /overlay
 ```
-Если меньше 20MB свободно, удалите неиспользуемые пакеты или старые кеши.
+Если меньше 20MB — удалите ненужные пакеты.
 
 ### adblock-fast не блокирует
-Проверьте, что устройства используют роутер как DNS (192.168.1.1), а не внешние DNS вроде 8.8.8.8.
-
-На iPhone отключите:
-- Настройки → Wi-Fi → (i) рядом с сетью → Private Relay (если есть)
-- Safari → Настройки → Конфиденциальность → Hide IP Address
+- Проверьте, что устройства используют роутер как DNS (192.168.1.1)
+- На iPhone отключите:
+  - Настройки → Wi-Fi → (i) → Private Relay
+  - Safari → Конфиденциальность → Hide IP Address
 
 ### WiFi обрывается
-Убедитесь, что `odhcpd` перезапустился:
 ```bash
 logread | grep odhcpd | tail
 ```
-Не должно быть строк `No default route present, setting ra_lifetime to 0!`
+Не должно быть: `No default route present, setting ra_lifetime to 0!`
+
+### Ошибка при установке пакетов
+```bash
+opkg update
+opkg install <package_name>
+```
+
+---
+
+## Что делает скрипт
+
+1. Обновляет списки пакетов
+2. Устанавливает русский язык + тему Argon
+3. Устанавливает adblock-fast с утилитами (gawk, grep, sed, coreutils-sort)
+4. Включает 3 списка блокировки (Hagezi Pro, AdguardTeam CNAME, YouTube Ads)
+5. Настраивает WiFi с anti-drop параметрами
+6. Отключает IPv6 RA/DHCPv6/NDP
+7. Ставит Argon темой по умолчанию
+
+Весь процесс занимает 3-5 минут.
+
+---
 
 ## Автор
 
-Создано для друзей с любовью ❤️
+Создано для друзей ❤️
 
 ## Лицензия
 
