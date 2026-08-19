@@ -49,7 +49,11 @@ opkg install luci-i18n-base-ru
 
 # Install Argon theme
 echo "[3/6] Installing Argon theme..."
-opkg install luci-theme-argon luci-compat
+opkg install luci-compat
+wget -O /tmp/luci-theme-argon.ipk \
+  https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.3.1/luci-theme-argon_2.3.1_all.ipk
+opkg install /tmp/luci-theme-argon.ipk
+rm -f /tmp/luci-theme-argon.ipk
 
 # Install adblock-fast + recommended tools
 echo "[4/6] Installing adblock-fast..."
