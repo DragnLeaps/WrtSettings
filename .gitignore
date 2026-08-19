@@ -1,0 +1,7 @@
+# Dev/temp scripts (may contain credentials)
+ab_*.py
+r2_*.py
+r3_*.py
+wifi_export.py
+apply_wifi_fix.ps1
+*.log
