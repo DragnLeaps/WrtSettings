@@ -358,7 +358,7 @@ return view.extend({
 
 		var exceptionSection = E("section", {class: "cbi-section"});
 		exceptionSection.appendChild(E("h3", {}, "Исключения из VPN"));
-		exceptionSection.appendChild(E("p", {class: "vpnus-muted vpnus-exceptions-help"}, "Домены из этого списка идут напрямую для всех устройств. Добавьте их быстрым пресетом или вручную, проверьте список и сохраните изменения одной кнопкой. Для Telegram дополнительно учитываются серверные сети мобильного приложения."));
+		exceptionSection.appendChild(E("p", {class: "vpnus-muted vpnus-exceptions-help"}, "Домены из этого списка идут напрямую для всех устройств по IPv4 и IPv6. Добавьте их быстрым пресетом или вручную, проверьте список и сохраните изменения одной кнопкой. Для Telegram дополнительно учитываются серверные сети мобильного приложения."));
 		var exceptionDomains = normalizeDomainList((state.exceptions && state.exceptions.domains || []).join(","));
 		var draftDomains = exceptionDomains.slice();
 		var filterText = "";

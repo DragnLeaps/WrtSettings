@@ -57,6 +57,8 @@ apply_nft() {
 			[ -n "$(mac_elements)" ] || return 1
 			;;
 	esac
+	# Domain exceptions depend on both IPv4 and IPv6 nft sets. Rebuild them
+	# before applying the policy so every quick/manual domain uses both paths.
 	elements="$(mac_elements)"
 	nft delete table inet vpnus_transport 2>/dev/null
 	nft -f - <<NFT
