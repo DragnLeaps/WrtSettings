@@ -191,7 +191,7 @@ return view.extend({
 		style.textContent =
 			'.main-left a[href$="/admin/vpnus"]::before{content:""!important;display:block;width:16px;height:16px;left:12.8px;top:50%;padding:0!important;background-color:currentColor!important;background-image:none!important;-webkit-mask:url("' + L.resource("icons/vpnus-menu.svg") + '") center/16px 16px no-repeat;mask:url("' + L.resource("icons/vpnus-menu.svg") + '") center/16px 16px no-repeat;transform:translateY(-50%)}' +
 			".vpnus-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}" +
-			".vpnus-head h2{margin:0}.vpnus-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}" +
+			".vpnus-head h2{margin:0}.vpnus-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}" +
 			".vpnus-stat{padding:12px 14px;background:var(--background-color-high,rgba(127,127,127,.08));border:1px solid var(--border-color-medium,#ddd);border-radius:6px}" +
 			".vpnus-stat b{display:block;font-size:16px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
 			".vpnus-ok{color:#198754}.vpnus-bad{color:#b42318}.vpnus-modes{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}" +
@@ -272,12 +272,14 @@ return view.extend({
 		root.appendChild(E("div", {class: "vpnus-head"}, [E("h2", {}, "VPNUS"), E("div", {class: "vpnus-actions"}, [refreshButton, headButton])]));
 
 		var geo = state.geo || {};
-		var country = geo.country || state.country || "не определена";
+		var country = state.country || geo.country || "не определена";
+		var exitText = geo.country ? (geo.ip ? geo.country + " (" + geo.ip + ")" : geo.country) : "нет данных";
 		var latency = geo.latency_ms != null ? geo.latency_ms + " мс" : "нет данных";
 		var xrayText = state.xray === "up" ? "работает" : "не запущен";
 		var stats = [
 			["Состояние", vpnOn ? "через VPN" : "напрямую", vpnOn ? "vpnus-ok" : "vpnus-bad"],
-			["Страна", country, ""],
+			["Профиль", country, ""],
+			["Выход", exitText, ""],
 			["Задержка", latency, ""],
 			["Xray", xrayText, state.xray === "up" ? "vpnus-ok" : "vpnus-bad"]
 		];
@@ -448,6 +450,37 @@ return view.extend({
 			}).catch(function(error) { notify(error.message || "Ошибка сохранения исключений", "error"); }).finally(function() { saveExceptions.classList.remove("vpnus-spin"); });
 		});
 		resetChanges.addEventListener("click", function() { self.refresh(); });
+		var exportDomains = E("button", {class: "cbi-button"}, "Экспорт");
+		var importFile = E("input", {type: "file", accept: ".txt,.csv,text/plain", style: "display:none"});
+		var importDomains = E("button", {class: "cbi-button"}, "Импорт");
+		exportDomains.addEventListener("click", function() {
+			if (!draftDomains.length) { notify("Список исключений пуст", "info"); return; }
+			var blob = new Blob([draftDomains.join("\n")], {type: "text/plain"});
+			var url = URL.createObjectURL(blob);
+			var a = document.createElement("a");
+			a.href = url;
+			a.download = "vpnus-exceptions.txt";
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		});
+		importFile.addEventListener("change", function() {
+			var file = importFile.files[0];
+			if (!file) return;
+			var reader = new FileReader();
+			reader.onload = function(ev) {
+				var additions = normalizeDomainList(ev.target.result);
+				if (!additions.length) { notify("Не найдено допустимых доменов в файле", "error"); return; }
+				draftDomains = normalizeDomainList(draftDomains.concat(additions).join(","));
+				importFile.value = "";
+				renderDomainList();
+				setDirty();
+				notify("Импортировано " + additions.length + " доменов", "success");
+			};
+			reader.readAsText(file);
+		});
+		importDomains.addEventListener("click", function() { importFile.click(); });
 		renderDomainList();
 		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions"}, [
 			E("div", {class: "vpnus-exceptions-grid"}, [
@@ -457,7 +490,7 @@ return view.extend({
 				]),
 				E("div", {class: "vpnus-exception-list"}, [E("div", {class: "vpnus-list-toolbar"}, [listSearch, listCount]), listItems])
 			]),
-			E("div", {class: "vpnus-exceptions-actions"}, [saveExceptions, resetChanges, clearDomains, unsaved])
+			E("div", {class: "vpnus-exceptions-actions"}, [saveExceptions, resetChanges, clearDomains, exportDomains, importFile, importDomains, unsaved])
 		]));
 		root.appendChild(exceptionSection);
 		return root;
