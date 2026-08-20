@@ -75,8 +75,13 @@ return view.extend({
 		button.classList.add("vpnus-spin");
 		return callCountry(index).then(function(result) {
 			if (!result || !result.ok) throw new Error(result && result.error || "Не удалось сменить профиль");
-			notify("Профиль VPNUS обновлён, туннель переподключён", "success");
-			return self.refresh();
+			notify("Профиль VPNUS обновлён, туннель переподключается", "success");
+			return self.refresh().then(function(state) {
+				// The backend invalidates the old geo cache. Retry once after xray
+				// has had time to reconnect, without restoring periodic polling.
+				setTimeout(function() { self.refresh(); }, 5500);
+				return state;
+			});
 		}).catch(function(error) {
 			notify(error.message || "Ошибка обновления профиля", "error");
 		}).finally(function() { button.classList.remove("vpnus-spin"); });

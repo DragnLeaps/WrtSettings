@@ -4,6 +4,7 @@ BASE=/etc/vpnus
 CFG="$BASE/panel.conf"
 LEASES=/tmp/dhcp.leases
 GEO_CACHE=/tmp/vpnus-panel-geo.json
+GEO_FORCE=/tmp/vpnus-panel-geo-force
 REQ=/tmp/vpnus-panel-rpc.json
 RESULT=/tmp/vpnus-panel-result.json
 STATUS=/tmp/vpnus-panel-status.json
@@ -92,6 +93,12 @@ country_from_subscription() {
 
 refresh_geo() {
 	now="$(date +%s)"
+	if [ -s "$GEO_FORCE" ]; then
+		force_ts="$(cat "$GEO_FORCE" 2>/dev/null | tr -d ' \t\r\n')"
+		case "$force_ts" in ''|*[!0-9]*) force_ts="$now" ;; esac
+		# Give xray a few seconds to finish reconnecting before measuring the new exit.
+		[ $((now - force_ts)) -ge 5 ] || return 1
+	fi
 	if [ -s "$GEO_CACHE" ]; then
 		ts="$(jq -r '.ts // 0' "$GEO_CACHE" 2>/dev/null)"
 		case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
@@ -104,6 +111,7 @@ refresh_geo() {
 	[ -n "$country" ] || { rm -f "$tmp"; return 1; }
 	ms="$(printf '%s' "$lat" | awk '{ printf "%d", ($1 * 1000) + 0.5 }')"
 	jq -nc --argjson ts "$now" --arg country "$country" --arg ip "$ip" --argjson latency "$ms" '{ts:$ts,country:$country,ip:$ip,latency_ms:$latency}' > "$GEO_CACHE"
+	rm -f "$GEO_FORCE"
 	rm -f "$tmp"
 }
 
@@ -151,6 +159,10 @@ set_country() {
 	old="$(cat "$BASE/country_index" 2>/dev/null | tr -d ' \t\r\n')"
 	printf '%s\n' "$idx" > "$BASE/country_index"
 	if /usr/bin/vpnus-xray-update >/dev/null 2>&1; then
+		# The old geo result must not survive a profile switch. The first status
+		# request waits briefly; the view performs one delayed retry after reconnect.
+		rm -f "$GEO_CACHE"
+		printf '%s\n' "$(date +%s)" > "$GEO_FORCE"
 		jq -nc --arg index "$idx" '{ok:true,country_index:($index|tonumber)}' > "$RESULT"
 	else
 		[ -n "$old" ] && printf '%s\n' "$old" > "$BASE/country_index"
