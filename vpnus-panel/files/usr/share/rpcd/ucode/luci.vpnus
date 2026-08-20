@@ -51,6 +51,15 @@ const methods = {
 				return { ok: false, error: 'invalid country' };
 			return backend('country-file', { index: int(index) });
 		}
+	},
+	exceptions: {
+		args: { domains: 'domains' },
+		call: function(req) {
+			let domains = '' + (req.args?.domains || '');
+			if (length(domains) > 32768 || !match(domains, /^[A-Za-z0-9:.,;_*\/ \r\n\t-]*$/))
+				return { ok: false, error: 'invalid domains' };
+			return backend('exceptions-file', { domains: domains });
+		}
 	}
 };
 

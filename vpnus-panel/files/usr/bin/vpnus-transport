@@ -7,6 +7,7 @@ MARK=0x2
 TABLE=200
 TUN=tun0
 POLICY=/etc/vpnus/panel.conf
+EXCEPTIONS=/etc/vpnus/exclusions.json
 
 load_policy() {
 	MODE="$(sed -n 's/^mode=//p' "$POLICY" 2>/dev/null | head -n 1)"
@@ -15,6 +16,10 @@ load_policy() {
 		all-vpn|all-direct|selected-vpn|selected-direct) ;;
 		*) MODE=all-vpn ;;
 	esac
+}
+
+load_exceptions() {
+	[ -s "$EXCEPTIONS" ] && jq -e '.domains and (.domains|type=="array")' "$EXCEPTIONS" >/dev/null 2>&1 || printf '%s\n' '{"domains":[]}' > "$EXCEPTIONS"
 }
 
 mac_elements() {
@@ -32,6 +37,18 @@ emit_set() {
 	esac
 }
 
+emit_exception_sets() {
+	load_exceptions
+	[ "$(jq -r '.domains | length' "$EXCEPTIONS" 2>/dev/null)" -gt 0 ] 2>/dev/null && \
+		printf '\tset excluded_domains { type ipv4_addr; flags interval; }\n'
+}
+
+emit_exception_rules() {
+	load_exceptions
+	[ "$(jq -r '.domains | length' "$EXCEPTIONS" 2>/dev/null)" -gt 0 ] 2>/dev/null && \
+		printf '\t\tiifname "br-lan" ip daddr @excluded_domains meta l4proto { tcp, udp } accept\n'
+}
+
 apply_nft() {
 	load_policy
 	case "$MODE" in
@@ -45,10 +62,12 @@ apply_nft() {
 	nft -f - <<NFT
 table inet vpnus_transport {
 $(emit_set)
+$(emit_exception_sets)
 	chain prerouting {
 		type filter hook prerouting priority mangle; policy accept;
 		fib daddr type local accept
 		ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, 100.64.0.0/10, 224.0.0.0/4, 240.0.0.0/4 } accept
+$(emit_exception_rules)
 $(case "$MODE" in
   all-vpn) printf '\t\tiifname "br-lan" meta l4proto { tcp, udp } meta mark set %s accept\n' "$MARK" ;;
   selected-vpn) printf '\t\tiifname "br-lan" ether saddr @selected_mac meta l4proto { tcp, udp } meta mark set %s accept\n' "$MARK" ;;
@@ -57,6 +76,7 @@ esac)
 	}
 }
 NFT
+	/usr/bin/vpnus-domains refresh >/dev/null 2>&1 || true
 }
 
 apply_on() {

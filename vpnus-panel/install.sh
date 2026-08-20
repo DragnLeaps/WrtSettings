@@ -45,6 +45,14 @@ install_dependencies() {
     opkg install $packages >/dev/null
 }
 
+install_dnsmasq_full() {
+    dnsmasq --version 2>/dev/null | grep -q ' nftset ' && return 0
+    log 'устанавливаю dnsmasq-full для динамических доменных исключений'
+    opkg update >/dev/null
+    opkg remove dnsmasq >/dev/null 2>&1 || true
+    opkg install dnsmasq-full >/dev/null || die 'не удалось установить dnsmasq-full'
+}
+
 fetch() {
     path="$1"
     dest="$2"
@@ -112,6 +120,7 @@ patch_header() {
 
 log "установка панели на ${DISTRIB_DESCRIPTION:-OpenWrt $DISTRIB_RELEASE}"
 install_dependencies
+install_dnsmasq_full
 
 [ -x /usr/bin/vpnus-xray-update ] || warn 'не найден /usr/bin/vpnus-xray-update; смена профиля может быть недоступна'
 [ -x /usr/bin/vpnus-agent ] || warn 'не найден /usr/bin/vpnus-agent; проверьте, что VPNUS уже установлен'
@@ -119,6 +128,8 @@ install_dependencies
 mkdir -p /etc/vpnus "$BACKUP_DIR"
 install_file usr/bin/vpnus-panel /usr/bin/vpnus-panel 0755 usr-bin-vpnus-panel
 install_file usr/bin/vpnus-transport /usr/bin/vpnus-transport 0755 usr-bin-vpnus-transport
+install_file usr/bin/vpnus-domains /usr/bin/vpnus-domains 0755 usr-bin-vpnus-domains
+install_file etc/init.d/vpnus-domains /etc/init.d/vpnus-domains 0755 init-vpnus-domains
 install_file usr/share/rpcd/ucode/luci.vpnus /usr/share/rpcd/ucode/luci.vpnus 0644 rpcd-ucode-luci-vpnus
 install_file usr/share/rpcd/acl.d/luci-app-vpnus.json /usr/share/rpcd/acl.d/luci-app-vpnus.json 0644 rpcd-acl-luci-app-vpnus
 install_file usr/share/luci/menu.d/luci-app-vpnus.json /usr/share/luci/menu.d/luci-app-vpnus.json 0644 luci-menu-luci-app-vpnus
@@ -130,6 +141,10 @@ patch_header "$HEADER_FILE"
 patch_header "$HEADER_LOGIN_FILE"
 printf '1\n' > "$MARKER"
 chmod 600 "$MARKER"
+
+/etc/init.d/vpnus-domains enable >/dev/null 2>&1 || true
+/etc/init.d/vpnus-domains start >/dev/null 2>&1 || true
+/usr/bin/vpnus-domains configure >/dev/null 2>&1 || true
 
 log 'перезапускаю rpcd и uhttpd'
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true

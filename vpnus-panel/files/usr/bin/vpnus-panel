@@ -5,6 +5,7 @@ CFG="$BASE/panel.conf"
 LEASES=/tmp/dhcp.leases
 GEO_CACHE=/tmp/vpnus-panel-geo.json
 GEO_FORCE=/tmp/vpnus-panel-geo-force
+EXCEPTIONS=$BASE/exclusions.json
 REQ=/tmp/vpnus-panel-rpc.json
 RESULT=/tmp/vpnus-panel-result.json
 STATUS=/tmp/vpnus-panel-status.json
@@ -39,6 +40,21 @@ save_policy() {
 		printf 'mode=%s\n' "$MODE"
 		printf 'selected=%s\n' "$SELECTED"
 	} > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$CFG"
+}
+
+load_exceptions() {
+	if [ ! -s "$EXCEPTIONS" ] || ! jq -e '.domains and (.domains|type=="array")' "$EXCEPTIONS" >/dev/null 2>&1; then
+		printf '%s\n' '{"domains":[]}' > "$EXCEPTIONS"
+		chmod 600 "$EXCEPTIONS"
+	fi
+}
+
+normalize_domains() {
+	printf '%s\n' "$1" | tr ',; ' '\n' | sed -e 's#^[[:space:]]*##' -e 's#[[:space:]]*$##' \
+		-e 's#^[Hh][Tt][Tt][Pp][Ss]*://##' -e 's#/.*##' -e 's#^\*\.##' | tr 'A-Z' 'a-z' |
+		while IFS= read -r domain; do
+			printf '%s' "$domain" | grep -qE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' && printf '%s\n' "$domain"
+		done | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
 apply_policy() {
@@ -130,6 +146,7 @@ device_list() {
 
 status_json() {
 	load_policy
+	load_exceptions
 	idx="$(cat "$BASE/country_index" 2>/dev/null | tr -d ' \t\r\n')"
 	printf '%s' "$idx" | grep -qE '^[0-9]+$' || idx=0
 	country="$(country_from_subscription "$idx")"
@@ -146,10 +163,28 @@ status_json() {
 	xray_state=down
 	pidof xray >/dev/null 2>&1 && xray_state=up
 	devices="$(device_list)"
+	exceptions="$(cat "$EXCEPTIONS")"
 	jq -nc --arg mode "$MODE" --arg state "$vpn_state" --arg xray "$xray_state" \
 		--arg index "$idx" --arg country "$country" --argjson selected "$selected_json" \
-		--argjson countries "$countries" --argjson devices "$devices" --argjson geo "$geo" \
-		'{ok:true,mode:$mode,state:$state,xray:$xray,country_index:($index|tonumber),country:$country,selected:$selected,countries:$countries,devices:$devices,geo:$geo}'
+		--argjson countries "$countries" --argjson devices "$devices" --argjson geo "$geo" --argjson exceptions "$exceptions" \
+		'{ok:true,mode:$mode,state:$state,xray:$xray,country_index:($index|tonumber),country:$country,selected:$selected,countries:$countries,devices:$devices,exceptions:$exceptions,geo:$geo}'
+}
+
+set_exceptions() {
+	[ -r "$REQ" ] || json_error 'request not found'
+	load_exceptions
+	domains="$(jq -r '.domains // empty' "$REQ" 2>/dev/null)"
+	domains="$(normalize_domains "$domains")"
+	domain_json="$(printf '%s' "$domains" | tr ',' '\n' | jq -Rsc 'split("\n") | map(select(length > 0))')"
+	tmp="$EXCEPTIONS.$$"
+	jq -nc --argjson domains "$domain_json" '{domains:$domains}' > "$tmp" 2>/dev/null || { rm -f "$tmp"; json_error 'cannot save exceptions'; return 1; }
+	chmod 600 "$tmp" && mv "$tmp" "$EXCEPTIONS"
+	/usr/bin/vpnus-domains configure >/dev/null 2>&1 || { json_error 'cannot configure domain exceptions'; return 1; }
+	# Rebuild nft sets immediately when the VPN route is active.
+	if /usr/bin/vpnus-transport status >/dev/null 2>&1; then
+		/usr/bin/vpnus-transport on >/dev/null 2>&1 || { json_error 'cannot apply domain exceptions'; return 1; }
+	fi
+	jq -nc --argjson domains "$domain_json" '{ok:true,domains:$domains}' > "$RESULT"
 }
 
 set_country() {
@@ -185,8 +220,13 @@ case "$1" in
 		trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 		set_country
 		;;
+	exceptions-file)
+		mkdir "$LOCK" 2>/dev/null || { json_error 'busy'; exit 1; }
+		trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+		set_exceptions
+		;;
 	*)
-		echo 'usage: vpnus-panel status|apply-file|country-file' >&2
+		echo 'usage: vpnus-panel status|apply-file|country-file|exceptions-file' >&2
 		exit 2
 		;;
 esac

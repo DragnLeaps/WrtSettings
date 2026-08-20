@@ -18,6 +18,11 @@ var callCountry = rpc.declare({
 	method: "country",
 	params: ["index"]
 });
+var callExceptions = rpc.declare({
+	object: "luci.vpnus",
+	method: "exceptions",
+	params: ["domains"]
+});
 
 function notify(message, level) {
 	ui.addNotification(null, E("p", {}, message), level || "info");
@@ -26,6 +31,135 @@ function notify(message, level) {
 function fmtTime(ts) {
 	if (!ts) return "нет данных";
 	return new Date(ts * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+}
+
+/* Curated quick presets. Each entry is [id, label, domains]. */
+var DOMAIN_PRESET_GROUPS = [
+	{
+		label: "Приложения (50)",
+		items: [
+			["youtube", "YouTube", "youtube.com,youtu.be,youtube-nocookie.com,youtubei.googleapis.com,googlevideo.com,ytimg.com"],
+			["telegram", "Telegram", "telegram.org,telegram.me,telegram.dog,t.me,telesco.pe"],
+			["whatsapp", "WhatsApp", "whatsapp.com,whatsapp.net,wa.me"],
+			["discord", "Discord", "discord.com,discordapp.com,discord.gg,discord.media,discordcdn.com,discordstatus.com"],
+			["instagram", "Instagram", "instagram.com,cdninstagram.com"],
+			["facebook", "Facebook / Messenger", "facebook.com,fbcdn.net,fbsbx.com,messenger.com,m.me"],
+			["twitter", "X / Twitter", "x.com,twitter.com,t.co,twimg.com"],
+			["tiktok", "TikTok", "tiktok.com,tiktokcdn.com,tiktokv.com,byteoversea.com,ibytedtos.com,muscdn.com,musical.ly"],
+			["twitch", "Twitch", "twitch.tv,twitchcdn.net,jtvnw.net,ttvnw.net"],
+			["netflix", "Netflix", "netflix.com,netflix.net,nflxext.com,nflximg.com,nflximg.net,nflxso.net,nflxvideo.net"],
+			["spotify", "Spotify", "spotify.com,spotifycdn.com,spotifycdn.net,scdn.co"],
+			["reddit", "Reddit", "reddit.com,redd.it,redditmedia.com,redditstatic.com,redditspace.com"],
+			["snapchat", "Snapchat", "snapchat.com,snap.com,sc-cdn.net"],
+			["linkedin", "LinkedIn", "linkedin.com,licdn.com"],
+			["pinterest", "Pinterest", "pinterest.com,pinimg.com"],
+			["threads", "Threads", "threads.net,threads.com,cdninstagram.com,fbcdn.net"],
+			["signal", "Signal", "signal.org,signal.art,signal.group,signalusers.org,whispersystems.org"],
+			["viber", "Viber", "viber.com,viber.me,vibercdn.com"],
+			["zoom", "Zoom", "zoom.us,zoom.com,zoomgov.com,zoomcdn.net"],
+			["teams", "Microsoft Teams", "teams.microsoft.com,teams.live.com,skype.com,skype.net,office.com,microsoftonline.com,msftauth.net,msauth.net"],
+			["skype", "Skype", "skype.com,skype.net,skypeassets.com"],
+			["slack", "Slack", "slack.com,slack-edge.com,slack-files.com,slack-imgs.com,slackb.com"],
+			["meet", "Google Meet", "meet.google.com,googleusercontent.com,gstatic.com,googleapis.com"],
+			["gmail", "Gmail", "gmail.com,mail.google.com,googlemail.com,googleusercontent.com,gstatic.com"],
+			["outlook", "Outlook", "outlook.com,outlook.office.com,office.com,office365.com,microsoftonline.com,live.com"],
+			["onedrive", "OneDrive", "onedrive.com,onedrive.live.com,sharepoint.com,1drv.ms,microsoftonline.com,office.com"],
+			["drive", "Google Drive", "drive.google.com,docs.google.com,googleusercontent.com,gstatic.com,googleapis.com"],
+			["dropbox", "Dropbox", "dropbox.com,dropboxapi.com,dropboxstatic.com,dropboxusercontent.com"],
+			["icloud", "iCloud", "icloud.com,icloud-content.com,apple.com,mzstatic.com"],
+			["github", "GitHub", "github.com,githubusercontent.com,githubassets.com,github.io,githubstatus.com"],
+			["gitlab", "GitLab", "gitlab.com,gitlab.io,gitlab-static.net"],
+			["steam", "Steam", "steampowered.com,steamcommunity.com,steamcontent.com,steamstatic.com,steamusercontent.com,steamserver.net"],
+			["epic", "Epic Games Store", "epicgames.com,epicgames.dev,epicgamescdn.com,unrealengine.com"],
+			["battlenet", "Battle.net", "battle.net,blizzard.com,blizzardgames.com"],
+			["ea", "EA app", "ea.com,origin.com,eapro.net,eaassets-a.akamaihd.net"],
+			["ubisoft", "Ubisoft Connect", "ubisoft.com,ubi.com,ubisoftconnect.com,ubisoft.org"],
+			["riot", "Riot Client", "riotgames.com,riotcdn.net,pvp.net,leagueoflegends.com,playvalorant.com"],
+			["playstation", "PlayStation Network", "playstation.com,playstation.net,sonyentertainmentnetwork.com"],
+			["xbox", "Xbox Live", "xbox.com,xboxlive.com,xboxservices.com"],
+			["nintendo", "Nintendo Switch Online", "nintendo.com,nintendo.net,nintendo-europe.com,nintendo.co.jp"],
+			["primevideo", "Amazon Prime Video", "primevideo.com,amazonvideo.com,aiv-cdn.net,media-amazon.com"],
+			["disneyplus", "Disney+", "disneyplus.com,disney-plus.net,bamgrid.com,dssott.com"],
+			["max", "Max / HBO Max", "max.com,hbomax.com,hbo.com,warnermediacdn.com"],
+			["hulu", "Hulu", "hulu.com,huluim.com,huluad.com"],
+			["appletv", "Apple TV+", "tv.apple.com,apple.com,mzstatic.com,apple-dns.net"],
+			["soundcloud", "SoundCloud", "soundcloud.com,sndcdn.com"],
+			["deezer", "Deezer", "deezer.com,dzcdn.net"],
+			["vk", "VK", "vk.com,vk.ru,userapi.com,vkuseraudio.net,vk-cdn.net,vkuser.net"],
+			["ok", "Одноклассники", "ok.ru,odnoklassniki.ru,mycdn.me"],
+			["yandexmusic", "Яндекс Музыка", "music.yandex.ru,yandex.ru,yandex.net,yastatic.net,yandexcloud.net"]
+		]
+	},
+	{
+		label: "Игры (50)",
+		items: [
+			["minecraft", "Minecraft", "minecraft.net,mojang.com,minecraftservices.com,xboxlive.com"],
+			["roblox", "Roblox", "roblox.com,rbxcdn.com,robloxapi.com"],
+			["fortnite", "Fortnite", "fortnite.com,epicgames.com,epicgames.dev,epicgamescdn.com"],
+			["cs2", "Counter-Strike 2", "counter-strike.net,steampowered.com,steamcommunity.com,steamcontent.com,steamserver.net"],
+			["dota2", "Dota 2", "dota2.com,steampowered.com,steamcommunity.com,steamcontent.com,steamserver.net"],
+			["lol", "League of Legends", "leagueoflegends.com,riotgames.com,riotcdn.net,pvp.net"],
+			["valorant", "Valorant", "playvalorant.com,riotgames.com,riotcdn.net,pvp.net"],
+			["pubg", "PUBG: Battlegrounds", "pubg.com,pubg.net,pubgstatic.com,krafton.com"],
+			["pubgmobile", "PUBG Mobile", "pubgmobile.com,pubgmobile.net,tencentgames.com,levelinfinite.com,igamecj.com"],
+			["cod", "Call of Duty", "callofduty.com,activision.com,demonware.net"],
+			["warzone", "Call of Duty: Warzone", "callofduty.com,activision.com,demonware.net"],
+			["mobilelegends", "Mobile Legends", "mobilelegends.com,moontongames.com,youngjoygame.com"],
+			["freefire", "Free Fire", "freefiremobile.com,garena.com,garena.sg"],
+			["genshin", "Genshin Impact", "genshinimpact.com,hoyoverse.com,hoyolab.com,mihoyo.com"],
+			["hsr", "Honkai: Star Rail", "honkai-star-rail.com,hoyoverse.com,hoyolab.com,mihoyo.com"],
+			["zzz", "Zenless Zone Zero", "zenlesszonezero.com,hoyoverse.com,hoyolab.com,mihoyo.com"],
+			["wow", "World of Warcraft", "worldofwarcraft.com,battle.net,blizzard.com"],
+			["overwatch2", "Overwatch 2", "playoverwatch.com,battle.net,blizzard.com"],
+			["diablo4", "Diablo IV", "diablo.com,battle.net,blizzard.com"],
+			["hearthstone", "Hearthstone", "hearthstone.com,battle.net,blizzard.com"],
+			["apex", "Apex Legends", "apexlegends.com,respawn.com,ea.com,eapro.net"],
+			["battlefield", "Battlefield", "battlefield.com,ea.com,eapro.net"],
+			["eafc", "EA Sports FC", "easports.com,eafc.com,ea.com,eapro.net"],
+			["rocketleague", "Rocket League", "rocketleague.com,psyonix.com,epicgames.com"],
+			["rainbowsix", "Rainbow Six Siege", "rainbow6.com,ubisoft.com,ubi.com,ubisoftconnect.com"],
+			["gta", "GTA Online", "rockstargames.com,rockstarcdn.com"],
+			["rdo", "Red Dead Online", "rockstargames.com,rockstarcdn.com"],
+			["destiny2", "Destiny 2", "bungie.net,bungie.com,destinythegame.com"],
+			["warframe", "Warframe", "warframe.com,warframecdn.com,digitalextremes.com"],
+			["poe", "Path of Exile", "pathofexile.com,pathofexile2.com,grindinggear.com"],
+			["ffxiv", "Final Fantasy XIV", "finalfantasyxiv.com,square-enix.com,square-enix-games.com"],
+			["blackdesert", "Black Desert", "playblackdesert.com,blackdesertonline.com,pearlabyss.com"],
+			["lostark", "Lost Ark", "playlostark.com,amazongames.com,smilegate.com"],
+			["newworld", "New World", "newworld.com,amazongames.com"],
+			["wot", "World of Tanks", "worldoftanks.com,wargaming.net,wgcdn.co"],
+			["wowships", "World of Warships", "worldofwarships.com,wargaming.net,wgcdn.co"],
+			["warthunder", "War Thunder", "warthunder.com,gaijin.net,gaijinent.com"],
+			["tarkov", "Escape from Tarkov", "escapefromtarkov.com,tarkov.com,battlestategames.com"],
+			["rust", "Rust", "playrust.com,facepunch.com"],
+			["ark", "ARK: Survival Evolved", "survivetheark.com,playark.com,studiowildcard.com"],
+			["palworld", "Palworld", "palworldgame.com,pocketpair.jp"],
+			["helldivers2", "Helldivers 2", "helldivers.com,arrowheadgamestudios.com,playstation.com,playstation.net"],
+			["dbd", "Dead by Daylight", "deadbydaylight.com,bhvr.com,behaviourinteractive.com"],
+			["thefinals", "THE FINALS", "reachthefinals.com,embark.games"],
+			["fallguys", "Fall Guys", "fallguys.com,mediatonicgames.com,epicgames.com"],
+			["brawlstars", "Brawl Stars", "brawlstars.com,supercell.com,supercell.net"],
+			["clashofclans", "Clash of Clans", "clashofclans.com,supercell.com,supercell.net"],
+			["clashroyale", "Clash Royale", "clashroyale.com,supercell.com,supercell.net"],
+			["pokemongo", "Pokémon GO", "pokemongolive.com,nianticlabs.com"],
+			["marvelrivals", "Marvel Rivals", "marvelrivals.com,neteasegames.com,netease.com"]
+		]
+	}
+];
+
+function presetCount() {
+	return DOMAIN_PRESET_GROUPS.reduce(function(total, group) { return total + group.items.length; }, 0);
+}
+
+function normalizeDomainList(value) {
+	var seen = {};
+	return String(value || "").split(/[\s,;]+/).map(function(domain) {
+		return domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^\*\./, "").split("/")[0];
+	}).filter(function(domain) {
+		if (!domain || seen[domain]) return false;
+		seen[domain] = true;
+		return true;
+	});
 }
 
 return view.extend({
@@ -49,8 +183,9 @@ return view.extend({
 			".vpnus-devices th{font-size:12px;color:var(--text-color-medium,#666)}.vpnus-device-name{font-weight:600}" +
 			".vpnus-device-meta{font-size:12px;color:var(--text-color-medium,#666)}.vpnus-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}" +
 			".vpnus-country{display:flex;gap:8px;align-items:center;max-width:520px}.vpnus-country select{flex:1}" +
+			".vpnus-exceptions{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,2fr);gap:8px;align-items:start;max-width:860px}.vpnus-exceptions select,.vpnus-exceptions textarea{width:100%;box-sizing:border-box}.vpnus-exceptions textarea{min-height:96px;resize:vertical}.vpnus-preset-actions,.vpnus-exceptions-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}.vpnus-exceptions-help{margin:8px 0 0}" +
 			".vpnus-muted{color:var(--text-color-medium,#666);font-size:12px}.vpnus-spin{opacity:.55;pointer-events:none}" +
-			"@media(max-width:720px){.vpnus-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.vpnus-devices td:nth-child(3),.vpnus-devices th:nth-child(3){display:none}}";
+			"@media(max-width:720px){.vpnus-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.vpnus-devices td:nth-child(3),.vpnus-devices th:nth-child(3){display:none}.vpnus-exceptions{grid-template-columns:1fr}}";
 		document.head.appendChild(style);
 	},
 
@@ -203,6 +338,46 @@ return view.extend({
 		countrySection.appendChild(E("div", {class: "vpnus-country"}, [select, countryButton]));
 		countrySection.appendChild(E("p", {class: "vpnus-muted"}, "Задержка и страна обновляются не чаще одного раза в 5 минут. Последняя проверка: " + fmtTime(geo.ts)));
 		root.appendChild(countrySection);
+
+		var exceptionSection = E("section", {class: "cbi-section"});
+		exceptionSection.appendChild(E("h3", {}, "Исключения из VPN"));
+		exceptionSection.appendChild(E("p", {class: "vpnus-muted vpnus-exceptions-help"}, "Эти домены будут идти напрямую для всех устройств, даже когда они работают через VPN. Быстрый список содержит " + presetCount() + " приложений и игр."));
+		var preset = E("select");
+		preset.appendChild(E("option", {value: ""}, "Выберите приложение или игру"));
+		DOMAIN_PRESET_GROUPS.forEach(function(group) {
+			var options = E("optgroup", {label: group.label});
+			group.items.forEach(function(item) { options.appendChild(E("option", {value: item[0]}, item[1])); });
+			preset.appendChild(options);
+		});
+		var domainInput = E("textarea", {placeholder: "например: example.com, api.example.com"});
+		var exceptionDomains = state.exceptions && state.exceptions.domains || [];
+		domainInput.value = exceptionDomains.join(", ");
+		var addPreset = E("button", {class: "cbi-button"}, "Добавить пресет");
+		addPreset.disabled = true;
+		preset.addEventListener("change", function() { addPreset.disabled = !preset.value; });
+		addPreset.addEventListener("click", function() {
+			var selectedPreset = DOMAIN_PRESET_GROUPS.reduce(function(found, group) {
+				return found || group.items.filter(function(item) { return item[0] === preset.value; })[0];
+			}, null);
+			if (!selectedPreset) return;
+			domainInput.value = normalizeDomainList(domainInput.value + "," + selectedPreset[2]).join(", ");
+			preset.value = "";
+			addPreset.disabled = true;
+		});
+		var clearDomains = E("button", {class: "cbi-button cbi-button-reset"}, "Очистить список");
+		clearDomains.addEventListener("click", function() { domainInput.value = ""; });
+		var saveExceptions = E("button", {class: "cbi-button cbi-button-apply"}, "Сохранить исключение");
+		saveExceptions.addEventListener("click", function() {
+			saveExceptions.classList.add("vpnus-spin");
+			callExceptions(domainInput.value).then(function(result) {
+				if (!result || !result.ok) throw new Error(result && result.error || "Не удалось сохранить исключение");
+				notify("Исключение из VPN сохранено", "success");
+				return self.refresh();
+			}).catch(function(error) { notify(error.message || "Ошибка сохранения исключения", "error"); }).finally(function() { saveExceptions.classList.remove("vpnus-spin"); });
+		});
+		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions"}, [E("div", {}, [preset, E("div", {class: "vpnus-preset-actions"}, [addPreset, clearDomains])]), E("div", {}, [domainInput])]));
+		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions-actions"}, [saveExceptions, E("span", {class: "vpnus-muted"}, "Пустой список удаляет все доменные исключения") ]));
+		root.appendChild(exceptionSection);
 		return root;
 	},
 

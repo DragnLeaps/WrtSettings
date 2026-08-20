@@ -8,7 +8,7 @@
     },
     "write": {
       "ubus": {
-        "luci.vpnus": ["apply", "country"]
+        "luci.vpnus": ["apply", "country", "exceptions"]
       }
     }
   }
