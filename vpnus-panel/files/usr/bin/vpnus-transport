@@ -1,0 +1,89 @@
+#!/bin/sh
+# VPNUS transport policy: route selected LAN devices through tun0.
+# The policy is persisted in /etc/vpnus/panel.conf as mode=all-vpn,
+# all-direct, selected-vpn or selected-direct and selected MAC addresses.
+
+MARK=0x2
+TABLE=200
+TUN=tun0
+POLICY=/etc/vpnus/panel.conf
+
+load_policy() {
+	MODE="$(sed -n 's/^mode=//p' "$POLICY" 2>/dev/null | head -n 1)"
+	SELECTED="$(sed -n 's/^selected=//p' "$POLICY" 2>/dev/null | head -n 1)"
+	case "$MODE" in
+		all-vpn|all-direct|selected-vpn|selected-direct) ;;
+		*) MODE=all-vpn ;;
+	esac
+}
+
+mac_elements() {
+	printf '%s\n' "$SELECTED" | tr ',' '\n' | tr 'A-F' 'a-f' |
+		while IFS= read -r mac; do
+			printf '%s' "$mac" | grep -qE '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$' && printf '%s, ' "$mac"
+		done | sed 's/, $//'
+}
+
+emit_set() {
+	case "$MODE" in
+		selected-vpn|selected-direct)
+			printf '\tset selected_mac {\n\t\ttype ether_addr\n\t\telements = { %s }\n\t}\n' "$elements"
+			;;
+	esac
+}
+
+apply_nft() {
+	load_policy
+	case "$MODE" in
+		all-direct) return 0 ;;
+		selected-vpn|selected-direct)
+			[ -n "$(mac_elements)" ] || return 1
+			;;
+	esac
+	elements="$(mac_elements)"
+	nft delete table inet vpnus_transport 2>/dev/null
+	nft -f - <<NFT
+table inet vpnus_transport {
+$(emit_set)
+	chain prerouting {
+		type filter hook prerouting priority mangle; policy accept;
+		fib daddr type local accept
+		ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16, 100.64.0.0/10, 224.0.0.0/4, 240.0.0.0/4 } accept
+$(case "$MODE" in
+  all-vpn) printf '\t\tiifname "br-lan" meta l4proto { tcp, udp } meta mark set %s accept\n' "$MARK" ;;
+  selected-vpn) printf '\t\tiifname "br-lan" ether saddr @selected_mac meta l4proto { tcp, udp } meta mark set %s accept\n' "$MARK" ;;
+  selected-direct) printf '\t\tiifname "br-lan" ether saddr != @selected_mac meta l4proto { tcp, udp } meta mark set %s accept\n' "$MARK" ;;
+esac)
+	}
+}
+NFT
+}
+
+apply_on() {
+	load_policy
+	[ "$MODE" != all-direct ] || return 1
+	apply_nft || return 1
+	ip route replace default dev "$TUN" table "$TABLE" 2>/dev/null || return 1
+	ip rule del fwmark "$MARK" table "$TABLE" 2>/dev/null
+	ip rule add fwmark "$MARK" table "$TABLE"
+}
+
+apply_off() {
+	ip rule del fwmark "$MARK" table "$TABLE" 2>/dev/null
+	ip route flush table "$TABLE" 2>/dev/null
+	nft delete table inet vpnus_transport 2>/dev/null
+}
+
+is_on() {
+	nft list table inet vpnus_transport >/dev/null 2>&1 || return 1
+	ip rule 2>/dev/null | grep -q "fwmark $MARK lookup $TABLE" || return 1
+	ip route show table "$TABLE" 2>/dev/null | grep -q "dev $TUN" || return 1
+	return 0
+}
+
+case "$1" in
+	on) apply_on ;;
+	off) apply_off ;;
+	status) is_on && echo on || echo off ;;
+	*) echo "usage: $0 on|off|status"; exit 1 ;;
+esac

@@ -1,0 +1,57 @@
+// Small rpcd backend for the VPNUS LuCI view.
+import { readfile, writefile, unlink, chmod } from 'fs';
+
+const REQUEST = '/tmp/vpnus-panel-rpc.json';
+const RESULT = '/tmp/vpnus-panel-result.json';
+const STATUS = '/tmp/vpnus-panel-status.json';
+
+function read_json(path) {
+	let raw = readfile(path);
+	if (!raw) return { ok: false, error: 'empty backend response' };
+	let value = json(raw);
+	return value || { ok: false, error: 'invalid backend response' };
+}
+
+function backend(command, args) {
+	writefile(REQUEST, sprintf('%J', args || {}));
+	chmod(REQUEST, 0600);
+	unlink(RESULT);
+	system('/usr/bin/vpnus-panel ' + command + ' >/dev/null 2>&1');
+	let result = read_json(RESULT);
+	unlink(REQUEST);
+	unlink(RESULT);
+	return result;
+}
+
+const methods = {
+	status: {
+		args: {},
+		call: function() {
+			system('/usr/bin/vpnus-panel status >/dev/null 2>&1');
+			return read_json(STATUS);
+		}
+	},
+	apply: {
+		args: { mode: 'mode', selected: 'selected' },
+		call: function(req) {
+			let mode = '' + (req.args?.mode || '');
+			let selected = '' + (req.args?.selected || '');
+			if (!match(mode, /^(all-vpn|all-direct|selected-vpn|selected-direct)$/))
+				return { ok: false, error: 'invalid mode' };
+			if (length(selected) > 4096 || !match(selected, /^[0-9A-Fa-f:,. -]*$/))
+				return { ok: false, error: 'invalid device list' };
+			return backend('apply-file', { mode: mode, selected: selected });
+		}
+	},
+	country: {
+		args: { index: 'index' },
+		call: function(req) {
+			let index = '' + (req.args?.index || '');
+			if (!match(index, /^[0-9]+$/) || int(index) > 999)
+				return { ok: false, error: 'invalid country' };
+			return backend('country-file', { index: int(index) });
+		}
+	}
+};
+
+return { 'luci.vpnus': methods };

@@ -1,0 +1,180 @@
+#!/bin/sh
+
+BASE=/etc/vpnus
+CFG="$BASE/panel.conf"
+LEASES=/tmp/dhcp.leases
+GEO_CACHE=/tmp/vpnus-panel-geo.json
+REQ=/tmp/vpnus-panel-rpc.json
+RESULT=/tmp/vpnus-panel-result.json
+STATUS=/tmp/vpnus-panel-status.json
+LOCK=/tmp/vpnus-panel.lock
+
+mkdir -p "$BASE"
+
+json_error() {
+	jq -nc --arg error "$1" '{ok:false,error:$error}' > "$RESULT"
+	return 1
+}
+
+load_policy() {
+	MODE="$(sed -n 's/^mode=//p' "$CFG" 2>/dev/null | head -n 1)"
+	SELECTED="$(sed -n 's/^selected=//p' "$CFG" 2>/dev/null | head -n 1)"
+	case "$MODE" in
+		all-vpn|all-direct|selected-vpn|selected-direct) ;;
+		*) MODE=all-vpn ;;
+	esac
+}
+
+normalize_macs() {
+	printf '%s\n' "$1" | tr ',' '\n' | tr 'A-F' 'a-f' |
+		while IFS= read -r mac; do
+			printf '%s' "$mac" | grep -qE '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$' && printf '%s\n' "$mac"
+		done | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+save_policy() {
+	tmp="$CFG.$$"
+	{
+		printf 'mode=%s\n' "$MODE"
+		printf 'selected=%s\n' "$SELECTED"
+	} > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$CFG"
+}
+
+apply_policy() {
+	load_policy
+	case "$MODE" in
+		all-direct)
+			rm -f "$BASE/transport_enabled"
+			/usr/bin/vpnus-transport off >/dev/null 2>&1 || return 1
+			;;
+		selected-vpn|selected-direct)
+			[ -n "$SELECTED" ] || return 1
+			mkdir -p "$BASE"
+			touch "$BASE/transport_enabled"
+			/usr/bin/vpnus-transport on >/dev/null 2>&1 || return 1
+			;;
+		all-vpn)
+			mkdir -p "$BASE"
+			touch "$BASE/transport_enabled"
+			/usr/bin/vpnus-transport on >/dev/null 2>&1 || return 1
+			;;
+		*) return 1 ;;
+	esac
+	return 0
+}
+
+apply_from_request() {
+	[ -r "$REQ" ] || json_error 'request not found'
+	mode="$(jq -r '.mode // empty' "$REQ" 2>/dev/null)"
+	selected="$(jq -r '.selected // empty' "$REQ" 2>/dev/null)"
+	case "$mode" in
+		all-vpn|all-direct|selected-vpn|selected-direct) ;;
+		*) json_error 'invalid mode'; return 1 ;;
+	esac
+	SELECTED="$(normalize_macs "$selected")"
+	if [ "$mode" = selected-vpn ] || [ "$mode" = selected-direct ]; then
+		[ -n "$SELECTED" ] || { json_error 'select at least one device'; return 1; }
+	fi
+	MODE="$mode"
+	save_policy || { json_error 'cannot save policy'; return 1; }
+	if apply_policy; then
+		jq -nc --arg mode "$MODE" --arg selected "$SELECTED" '{ok:true,mode:$mode,selected:$selected}' > "$RESULT"
+	else
+		json_error 'transport apply failed'; return 1
+	fi
+}
+
+country_from_subscription() {
+	idx="$1"
+	[ -f /tmp/vpnus_happ.json ] || return 1
+	jq -r --argjson i "$idx" '.[$i].remarks // empty' /tmp/vpnus_happ.json 2>/dev/null
+}
+
+refresh_geo() {
+	now="$(date +%s)"
+	if [ -s "$GEO_CACHE" ]; then
+		ts="$(jq -r '.ts // 0' "$GEO_CACHE" 2>/dev/null)"
+		case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
+		[ $((now - ts)) -lt 300 ] && return 0
+	fi
+	tmp="/tmp/vpnus-panel-geo.$$"
+	lat="$(curl -fsS --max-time 8 --socks5-hostname 127.0.0.1:10808 -o "$tmp" -w '%{time_total}' https://ipapi.co/json/ 2>/dev/null)" || { rm -f "$tmp"; return 1; }
+	country="$(jq -r '.country_name // .country // empty' "$tmp" 2>/dev/null)"
+	ip="$(jq -r '.ip // empty' "$tmp" 2>/dev/null)"
+	[ -n "$country" ] || { rm -f "$tmp"; return 1; }
+	ms="$(printf '%s' "$lat" | awk '{ printf "%d", ($1 * 1000) + 0.5 }')"
+	jq -nc --argjson ts "$now" --arg country "$country" --arg ip "$ip" --argjson latency "$ms" '{ts:$ts,country:$country,ip:$ip,latency_ms:$latency}' > "$GEO_CACHE"
+	rm -f "$tmp"
+}
+
+device_list() {
+	devices='[]'
+	[ -r "$LEASES" ] || { printf '%s' "$devices"; return; }
+	while IFS=' ' read -r expires mac ip host clientid rest; do
+		[ -n "$mac" ] || continue
+		mac="$(printf '%s' "$mac" | tr 'A-F' 'a-f')"
+		printf '%s' "$mac" | grep -qE '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$' || continue
+		[ "$host" = '*' ] && host=''
+		devices="$(printf '%s' "$devices" | jq --arg mac "$mac" --arg ip "$ip" --arg name "$host" '. + [{mac:$mac,ip:$ip,name:$name}]')"
+	done < "$LEASES"
+	printf '%s' "$devices"
+}
+
+status_json() {
+	load_policy
+	idx="$(cat "$BASE/country_index" 2>/dev/null | tr -d ' \t\r\n')"
+	printf '%s' "$idx" | grep -qE '^[0-9]+$' || idx=0
+	country="$(country_from_subscription "$idx")"
+	geo='{}'
+	if /usr/bin/vpnus-transport status 2>/dev/null | grep -q '^on$'; then
+		refresh_geo >/dev/null 2>&1 || true
+	fi
+	[ -s "$GEO_CACHE" ] && geo="$(cat "$GEO_CACHE")"
+	selected_json="$(printf '%s' "$SELECTED" | tr ',' '\n' | jq -Rsc 'split("\n") | map(select(length > 0))')"
+	countries='[]'
+	[ -f /tmp/vpnus_happ.json ] && countries="$(jq -c 'to_entries | map({index:.key,label:(.value.remarks // ("Профиль " + (.key|tostring)))})' /tmp/vpnus_happ.json 2>/dev/null || printf '[]')"
+	vpn_state=off
+	/usr/bin/vpnus-transport status 2>/dev/null | grep -q '^on$' && vpn_state=on
+	xray_state=down
+	pidof xray >/dev/null 2>&1 && xray_state=up
+	devices="$(device_list)"
+	jq -nc --arg mode "$MODE" --arg state "$vpn_state" --arg xray "$xray_state" \
+		--arg index "$idx" --arg country "$country" --argjson selected "$selected_json" \
+		--argjson countries "$countries" --argjson devices "$devices" --argjson geo "$geo" \
+		'{ok:true,mode:$mode,state:$state,xray:$xray,country_index:($index|tonumber),country:$country,selected:$selected,countries:$countries,devices:$devices,geo:$geo}'
+}
+
+set_country() {
+	[ -r "$REQ" ] || json_error 'request not found'
+	idx="$(jq -r '.index // empty' "$REQ" 2>/dev/null)"
+	printf '%s' "$idx" | grep -qE '^[0-9]+$' || { json_error 'invalid country'; return 1; }
+	old="$(cat "$BASE/country_index" 2>/dev/null | tr -d ' \t\r\n')"
+	printf '%s\n' "$idx" > "$BASE/country_index"
+	if /usr/bin/vpnus-xray-update >/dev/null 2>&1; then
+		jq -nc --arg index "$idx" '{ok:true,country_index:($index|tonumber)}' > "$RESULT"
+	else
+		[ -n "$old" ] && printf '%s\n' "$old" > "$BASE/country_index"
+		json_error 'VPNUS profile update failed'; return 1
+	fi
+}
+
+case "$1" in
+	status)
+		status_json > "$STATUS"
+		cat "$STATUS"
+		;;
+	apply-file)
+		mkdir "$LOCK" 2>/dev/null || { json_error 'busy'; exit 1; }
+		trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+		apply_from_request
+		;;
+	country-file)
+		mkdir "$LOCK" 2>/dev/null || { json_error 'busy'; exit 1; }
+		trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+		set_country
+		;;
+	*)
+		echo 'usage: vpnus-panel status|apply-file|country-file' >&2
+		exit 2
+		;;
+esac

@@ -1,0 +1,13 @@
+{
+  "admin/vpnus": {
+    "title": "VPNUS",
+    "order": 25,
+    "action": {
+      "type": "view",
+      "path": "vpnus/main"
+    },
+    "depends": {
+      "acl": ["luci-app-vpnus"]
+    }
+  }
+}

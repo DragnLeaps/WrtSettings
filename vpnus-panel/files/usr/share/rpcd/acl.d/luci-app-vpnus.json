@@ -1,0 +1,15 @@
+{
+  "luci-app-vpnus": {
+    "description": "VPNUS on-router control panel",
+    "read": {
+      "ubus": {
+        "luci.vpnus": ["status"]
+      }
+    },
+    "write": {
+      "ubus": {
+        "luci.vpnus": ["apply", "country"]
+      }
+    }
+  }
+}

@@ -1,1 +1,6 @@
 *.sh text eol=lf
+vpnus-panel/files/usr/bin/* text eol=lf
+vpnus-panel/files/**/*.js text eol=lf
+vpnus-panel/files/**/*.json text eol=lf
+vpnus-panel/files/**/*.ucode text eol=lf
+vpnus-panel/files/**/*.svg text eol=lf
