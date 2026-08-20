@@ -156,7 +156,24 @@ function normalizeDomainList(value) {
 	return String(value || "").split(/[\s,;]+/).map(function(domain) {
 		return domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^\*\./, "").split("/")[0];
 	}).filter(function(domain) {
-		if (!domain || seen[domain]) return false;
+		if (!domain || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain) || seen[domain]) return false;
+		seen[domain] = true;
+		return true;
+	});
+}
+
+function domainTokens(value) {
+	return String(value || "").split(/[\s,;]+/).map(function(domain) {
+		return domain.toLowerCase().replace(/^https?:\/\//, "").replace(/^\*\./, "").split("/")[0];
+	}).filter(Boolean);
+}
+
+function invalidDomainList(value) {
+	var valid = {};
+	normalizeDomainList(value).forEach(function(domain) { valid[domain] = true; });
+	var seen = {};
+	return domainTokens(value).filter(function(domain) {
+		if (valid[domain] || seen[domain] || /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) return false;
 		seen[domain] = true;
 		return true;
 	});
@@ -183,9 +200,9 @@ return view.extend({
 			".vpnus-devices th{font-size:12px;color:var(--text-color-medium,#666)}.vpnus-device-name{font-weight:600}" +
 			".vpnus-device-meta{font-size:12px;color:var(--text-color-medium,#666)}.vpnus-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}" +
 			".vpnus-country{display:flex;gap:8px;align-items:center;max-width:520px}.vpnus-country select{flex:1}" +
-			".vpnus-exceptions{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,2fr);gap:8px;align-items:start;max-width:860px}.vpnus-exceptions select,.vpnus-exceptions textarea{width:100%;box-sizing:border-box}.vpnus-exceptions textarea{min-height:96px;resize:vertical}.vpnus-preset-actions,.vpnus-exceptions-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}.vpnus-exceptions-help{margin:8px 0 0}" +
+			".vpnus-exceptions{max-width:980px}.vpnus-exceptions-grid{display:grid;grid-template-columns:minmax(240px,1fr) minmax(300px,1.5fr);gap:14px;align-items:stretch}.vpnus-exception-card{padding:14px;border:1px solid var(--border-color-medium,rgba(127,127,127,.28));border-radius:8px;background:var(--background-color-high,rgba(127,127,127,.07))}.vpnus-exception-card h4{margin:0 0 6px;font-size:14px}.vpnus-exception-card select,.vpnus-exception-card textarea,.vpnus-exception-search{width:100%;box-sizing:border-box;background:var(--background-color-low,#20252b)!important;color:var(--text-color-high,#fff)!important;border:1px solid var(--border-color-medium,rgba(255,255,255,.2))!important;border-radius:6px;padding:9px 10px;box-shadow:none!important}.vpnus-exception-card select:focus,.vpnus-exception-card textarea:focus,.vpnus-exception-search:focus{border-color:var(--primary-color,#5e72e4)!important;outline:none;box-shadow:0 0 0 2px rgba(94,114,228,.22)!important}.vpnus-exception-card textarea{min-height:116px;resize:vertical;line-height:1.45}.vpnus-exception-card textarea::placeholder,.vpnus-exception-search::placeholder{color:var(--text-color-medium,#9aa3b2);opacity:1}.vpnus-preset-actions,.vpnus-exceptions-actions,.vpnus-list-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}.vpnus-exception-list{margin-top:14px;border:1px solid var(--border-color-medium,rgba(127,127,127,.28));border-radius:8px;overflow:hidden;background:var(--background-color-high,rgba(127,127,127,.07))}.vpnus-list-toolbar{padding:10px 12px;margin:0;border-bottom:1px solid var(--border-color-medium,rgba(127,127,127,.22))}.vpnus-list-toolbar .vpnus-exception-search{flex:1;min-width:180px}.vpnus-domain-count{font-size:12px;color:var(--text-color-medium,#9aa3b2);white-space:nowrap}.vpnus-domain-items{display:flex;flex-wrap:wrap;gap:7px;padding:12px;max-height:190px;overflow:auto}.vpnus-domain-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 8px;border-radius:999px;background:rgba(94,114,228,.16);border:1px solid rgba(94,114,228,.4);color:var(--text-color-high,#fff);font-size:12px}.vpnus-domain-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vpnus-domain-chip button{border:0;background:transparent;color:inherit;cursor:pointer;padding:0 2px;line-height:1;font-size:16px;opacity:.75}.vpnus-domain-chip button:hover{opacity:1}.vpnus-domain-empty{padding:22px 12px;text-align:center;color:var(--text-color-medium,#9aa3b2);font-size:13px}.vpnus-unsaved{display:none;color:#d9a441;font-size:12px}.vpnus-unsaved.visible{display:inline}.vpnus-validation{min-height:18px;margin:8px 0 0;color:#e58a8a;font-size:12px}.vpnus-exception-note{margin:8px 0 0}.vpnus-exceptions-help{margin:8px 0 0}" +
 			".vpnus-muted{color:var(--text-color-medium,#666);font-size:12px}.vpnus-spin{opacity:.55;pointer-events:none}" +
-			"@media(max-width:720px){.vpnus-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.vpnus-devices td:nth-child(3),.vpnus-devices th:nth-child(3){display:none}.vpnus-exceptions{grid-template-columns:1fr}}";
+			"@media(max-width:720px){.vpnus-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.vpnus-devices td:nth-child(3),.vpnus-devices th:nth-child(3){display:none}.vpnus-exceptions-grid{grid-template-columns:1fr}.vpnus-domain-items{max-height:240px}}";
 		document.head.appendChild(style);
 	},
 
@@ -341,7 +358,10 @@ return view.extend({
 
 		var exceptionSection = E("section", {class: "cbi-section"});
 		exceptionSection.appendChild(E("h3", {}, "Исключения из VPN"));
-		exceptionSection.appendChild(E("p", {class: "vpnus-muted vpnus-exceptions-help"}, "Эти домены будут идти напрямую для всех устройств, даже когда они работают через VPN. Быстрый список содержит " + presetCount() + " приложений и игр."));
+		exceptionSection.appendChild(E("p", {class: "vpnus-muted vpnus-exceptions-help"}, "Домены из этого списка идут напрямую для всех устройств. Добавьте их быстрым пресетом или вручную, проверьте список и сохраните изменения одной кнопкой."));
+		var exceptionDomains = normalizeDomainList((state.exceptions && state.exceptions.domains || []).join(","));
+		var draftDomains = exceptionDomains.slice();
+		var filterText = "";
 		var preset = E("select");
 		preset.appendChild(E("option", {value: ""}, "Выберите приложение или игру"));
 		DOMAIN_PRESET_GROUPS.forEach(function(group) {
@@ -349,34 +369,94 @@ return view.extend({
 			group.items.forEach(function(item) { options.appendChild(E("option", {value: item[0]}, item[1])); });
 			preset.appendChild(options);
 		});
-		var domainInput = E("textarea", {placeholder: "например: example.com, api.example.com"});
-		var exceptionDomains = state.exceptions && state.exceptions.domains || [];
-		domainInput.value = exceptionDomains.join(", ");
-		var addPreset = E("button", {class: "cbi-button"}, "Добавить пресет");
+		var addPreset = E("button", {class: "cbi-button cbi-button-apply"}, "Добавить пресет");
 		addPreset.disabled = true;
+		var domainInput = E("textarea", {placeholder: "example.com\napi.example.com"});
+		var addManual = E("button", {class: "cbi-button cbi-button-apply"}, "Добавить домены");
+		var clearInput = E("button", {class: "cbi-button"}, "Очистить поле");
+		var clearDomains = E("button", {class: "cbi-button cbi-button-reset"}, "Удалить все");
+		var validation = E("div", {class: "vpnus-validation"}, "");
+		var unsaved = E("span", {class: "vpnus-unsaved"}, "Есть несохранённые изменения");
+		var listItems = E("div", {class: "vpnus-domain-items"});
+		var listCount = E("span", {class: "vpnus-domain-count"});
+		var listSearch = E("input", {class: "vpnus-exception-search",type: "search",placeholder: "Поиск по списку"});
+		var setDirty = function() {
+			var dirty = draftDomains.join(",") !== exceptionDomains.join(",");
+			unsaved.classList.toggle("visible", dirty);
+			saveExceptions.disabled = !dirty;
+			resetChanges.disabled = !dirty;
+		};
+		var renderDomainList = function() {
+			while (listItems.firstChild) listItems.removeChild(listItems.firstChild);
+			var visible = draftDomains.filter(function(domain) { return !filterText || domain.indexOf(filterText) >= 0; });
+			listCount.textContent = visible.length + " из " + draftDomains.length;
+			if (!visible.length) {
+				listItems.appendChild(E("div", {class: "vpnus-domain-empty"}, draftDomains.length ? "По вашему запросу ничего не найдено" : "Список исключений пока пуст"));
+				return;
+			}
+			visible.forEach(function(domain) {
+				var chip = E("div", {class: "vpnus-domain-chip"});
+				var remove = E("button", {type: "button",title: "Удалить " + domain,"aria-label": "Удалить " + domain}, "×");
+				remove.addEventListener("click", function() {
+					draftDomains = draftDomains.filter(function(item) { return item !== domain; });
+					renderDomainList();
+					setDirty();
+				});
+				chip.appendChild(E("span", {}, domain));
+				chip.appendChild(remove);
+				listItems.appendChild(chip);
+			});
+		};
 		preset.addEventListener("change", function() { addPreset.disabled = !preset.value; });
 		addPreset.addEventListener("click", function() {
 			var selectedPreset = DOMAIN_PRESET_GROUPS.reduce(function(found, group) {
 				return found || group.items.filter(function(item) { return item[0] === preset.value; })[0];
 			}, null);
 			if (!selectedPreset) return;
-			domainInput.value = normalizeDomainList(domainInput.value + "," + selectedPreset[2]).join(", ");
+			draftDomains = normalizeDomainList(draftDomains.join(",") + "," + selectedPreset[2]);
 			preset.value = "";
 			addPreset.disabled = true;
+			renderDomainList();
+			setDirty();
 		});
-		var clearDomains = E("button", {class: "cbi-button cbi-button-reset"}, "Очистить список");
-		clearDomains.addEventListener("click", function() { domainInput.value = ""; });
-		var saveExceptions = E("button", {class: "cbi-button cbi-button-apply"}, "Сохранить исключение");
+		addManual.addEventListener("click", function() {
+			var invalid = invalidDomainList(domainInput.value);
+			var additions = normalizeDomainList(domainInput.value);
+			validation.textContent = invalid.length ? "Не распознаны: " + invalid.join(", ") : "";
+			if (!additions.length) {
+				if (!invalid.length) validation.textContent = "Введите хотя бы один домен, например example.com";
+				return;
+			}
+			draftDomains = normalizeDomainList(draftDomains.concat(additions).join(","));
+			domainInput.value = "";
+			renderDomainList();
+			setDirty();
+		});
+		clearInput.addEventListener("click", function() { domainInput.value = ""; validation.textContent = ""; });
+		clearDomains.addEventListener("click", function() { draftDomains = []; renderDomainList(); setDirty(); });
+		listSearch.addEventListener("input", function() { filterText = listSearch.value.toLowerCase().trim(); renderDomainList(); });
+		var saveExceptions = E("button", {class: "cbi-button cbi-button-apply"}, "Сохранить изменения");
+		var resetChanges = E("button", {class: "cbi-button"}, "Отменить изменения");
+		resetChanges.disabled = true;
+		saveExceptions.disabled = true;
 		saveExceptions.addEventListener("click", function() {
 			saveExceptions.classList.add("vpnus-spin");
-			callExceptions(domainInput.value).then(function(result) {
-				if (!result || !result.ok) throw new Error(result && result.error || "Не удалось сохранить исключение");
-				notify("Исключение из VPN сохранено", "success");
+			callExceptions(draftDomains.join(",")).then(function(result) {
+				if (!result || !result.ok) throw new Error(result && result.error || "Не удалось сохранить исключения");
+				notify("Список исключений сохранён", "success");
 				return self.refresh();
-			}).catch(function(error) { notify(error.message || "Ошибка сохранения исключения", "error"); }).finally(function() { saveExceptions.classList.remove("vpnus-spin"); });
+			}).catch(function(error) { notify(error.message || "Ошибка сохранения исключений", "error"); }).finally(function() { saveExceptions.classList.remove("vpnus-spin"); });
 		});
-		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions"}, [E("div", {}, [preset, E("div", {class: "vpnus-preset-actions"}, [addPreset, clearDomains])]), E("div", {}, [domainInput])]));
-		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions-actions"}, [saveExceptions, E("span", {class: "vpnus-muted"}, "Пустой список удаляет все доменные исключения") ]));
+		resetChanges.addEventListener("click", function() { self.refresh(); });
+		renderDomainList();
+		exceptionSection.appendChild(E("div", {class: "vpnus-exceptions"}, [
+			E("div", {class: "vpnus-exceptions-grid"}, [
+				E("div", {class: "vpnus-exception-card"}, [E("h4", {}, "Быстрое исключение"), E("p", {class: "vpnus-muted"}, "Добавьте домены популярного приложения или игры в текущий список."), preset, E("div", {class: "vpnus-preset-actions"}, [addPreset])]),
+				E("div", {class: "vpnus-exception-card"}, [E("h4", {}, "Ручное исключение"), E("p", {class: "vpnus-muted"}, "По одному домену на строку или через запятую. Поддерживаются адреса с http:// и *."), domainInput, E("div", {class: "vpnus-preset-actions"}, [addManual, clearInput]), validation])
+			]),
+			E("div", {class: "vpnus-exception-list"}, [E("div", {class: "vpnus-list-toolbar"}, [listSearch, listCount]), listItems]),
+			E("div", {class: "vpnus-exceptions-actions"}, [saveExceptions, resetChanges, clearDomains, unsaved])
+		]));
 		root.appendChild(exceptionSection);
 		return root;
 	},
