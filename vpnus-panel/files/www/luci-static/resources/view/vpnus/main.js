@@ -141,7 +141,7 @@ var DOMAIN_PRESET_GROUPS = [
 			["brawlstars", "Brawl Stars", "brawlstars.com,supercell.com,supercell.net"],
 			["clashofclans", "Clash of Clans", "clashofclans.com,supercell.com,supercell.net"],
 			["clashroyale", "Clash Royale", "clashroyale.com,supercell.com,supercell.net"],
-			["pokemongo", "Pokémon GO", "pokemongolive.com,nianticlabs.com"],
+			["spacemarine2", "Warhammer 40,000: Space Marine 2", "spacemarine2.com,focus-entmt.com,saber.games,steampowered.com,steamcommunity.com"],
 			["marvelrivals", "Marvel Rivals", "marvelrivals.com,neteasegames.com,netease.com"]
 		]
 	}
