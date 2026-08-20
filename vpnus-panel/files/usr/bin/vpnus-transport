@@ -40,13 +40,13 @@ emit_set() {
 emit_exception_sets() {
 	load_exceptions
 	[ "$(jq -r '.domains | length' "$EXCEPTIONS" 2>/dev/null)" -gt 0 ] 2>/dev/null && \
-		printf '\tset excluded_domains { type ipv4_addr; flags interval; }\n'
+		printf '\tset excluded_domains { type ipv4_addr; flags interval; }\n\tset excluded_domains_v6 { type ipv6_addr; flags interval; }\n'
 }
 
 emit_exception_rules() {
 	load_exceptions
 	[ "$(jq -r '.domains | length' "$EXCEPTIONS" 2>/dev/null)" -gt 0 ] 2>/dev/null && \
-		printf '\t\tiifname "br-lan" ip daddr @excluded_domains meta l4proto { tcp, udp } accept\n'
+		printf '\t\tiifname "br-lan" ip daddr @excluded_domains meta l4proto { tcp, udp } accept\n\t\tiifname "br-lan" ip6 daddr @excluded_domains_v6 meta l4proto { tcp, udp } accept\n'
 }
 
 apply_nft() {

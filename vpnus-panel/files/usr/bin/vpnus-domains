@@ -1,5 +1,5 @@
 #!/bin/sh
-# Resolve configured application domains and maintain per-device nft sets.
+# Resolve configured application domains and maintain nft sets.
 
 EXCEPTIONS=/etc/vpnus/exclusions.json
 TABLE_FAMILY=inet
@@ -12,17 +12,68 @@ resolve_domain() {
 		grep -E '^[0-9]+(\.[0-9]+){3}$' | sort -u
 }
 
+resolve_domain6() {
+	nslookup "$1" 127.0.0.1 2>/dev/null |
+		awk '/^Address [0-9]+: /{print $3} /^Address: /{print $2}' |
+		grep -E '^[0-9A-Fa-f]*:[0-9A-Fa-f:]+$' | sort -u
+}
+
+telegram_exception_enabled() {
+	jq -r '.domains[]?' "$EXCEPTIONS" 2>/dev/null |
+		grep -qE '^(t\.me|telegram\.dog|telegram\.me|telegram\.org|telesco\.pe)$'
+}
+
+telegram_networks() {
+	# Telegram clients use MTProto endpoints directly and may not resolve the
+	# web domains before connecting. Keep the official IPv4 service ranges in
+	# the same nft set so desktop and mobile clients follow the same exception.
+	cat <<'EOF'
+91.108.4.0/22
+91.108.8.0/22
+91.108.12.0/22
+91.108.16.0/22
+91.108.20.0/22
+91.108.56.0/22
+95.161.64.0/20
+149.154.160.0/20
+EOF
+}
+
+telegram_networks6() {
+	cat <<'EOF'
+2001:67c:4e8::/48
+2001:b28:f23c::/48
+2001:b28:f23d::/48
+2001:b28:f23f::/48
+EOF
+}
+
 refresh() {
 	[ -s "$EXCEPTIONS" ] || return 0
 	nft list table "$TABLE_FAMILY" "$TABLE" >/dev/null 2>&1 || return 0
 	nft list set "$TABLE_FAMILY" "$TABLE" excluded_domains >/dev/null 2>&1 || return 0
 	nft flush set "$TABLE_FAMILY" "$TABLE" excluded_domains 2>/dev/null || true
+	nft list set "$TABLE_FAMILY" "$TABLE" excluded_domains_v6 >/dev/null 2>&1 && \
+		nft flush set "$TABLE_FAMILY" "$TABLE" excluded_domains_v6 2>/dev/null || true
+	# Add Telegram's fixed MTProto ranges before DNS answers. nft interval sets
+	# reject a broad range when a single address inside it already exists.
+	if telegram_exception_enabled; then
+		telegram_networks | while IFS= read -r network; do
+			nft add element "$TABLE_FAMILY" "$TABLE" excluded_domains "{ $network }" 2>/dev/null || true
+		done
+		telegram_networks6 | while IFS= read -r network; do
+			nft add element "$TABLE_FAMILY" "$TABLE" excluded_domains_v6 "{ $network }" 2>/dev/null || true
+		done
+	fi
 	jq -r '.domains[]' "$EXCEPTIONS" 2>/dev/null |
 	while IFS= read -r domain; do
 		ips="$(resolve_domain "$domain")"
-		[ -n "$ips" ] || continue
 		for ip in $ips; do
 			nft add element "$TABLE_FAMILY" "$TABLE" excluded_domains "{ $ip }" 2>/dev/null || true
+		done
+		ips6="$(resolve_domain6 "$domain")"
+		for ip in $ips6; do
+			nft add element "$TABLE_FAMILY" "$TABLE" excluded_domains_v6 "{ $ip }" 2>/dev/null || true
 		done
 	done
 }
